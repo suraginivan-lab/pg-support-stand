@@ -70,8 +70,8 @@ jobs:
         run: pytest -v
       - name: Бэкап + проверка восстановления
         run: |
-          f=$(scripts/bash/backup.sh /tmp/bk | tail -1)
-          scripts/bash/restore_check.sh "$f"
+          f=$(bash scripts/bash/backup.sh /tmp/bk | tail -1)
+          bash scripts/bash/restore_check.sh "$f"
 
   smoke-compose:
     runs-on: ubuntu-latest
