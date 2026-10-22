@@ -1,0 +1,106 @@
+# Стенд сопровождения PostgreSQL
+#   docker compose up -d                      -> dns + primary + replica
+#   docker compose --profile ad up -d         -> + контроллер домена Samba AD
+#   docker compose --profile tools run toolbox ...   -> контейнер с python/bash-инструментами
+name: pg-support-stand
+
+x-pg-env: &pg-env
+  POSTGRES_DB: ${POSTGRES_DB:-shop}
+  POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте в .env}
+
+networks:
+  lab:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  pg_primary:
+  pg_replica:
+  ad_data:
+
+services:
+  dns:
+    image: coredns/coredns:1.11.3
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes:
+      - ./docker/dns/Corefile:/etc/coredns/Corefile:ro
+      - ./docker/dns/db.lab.local:/zones/db.lab.local:ro
+    networks:
+      lab: { ipv4_address: 172.28.0.2 }
+    restart: unless-stopped
+
+  pg-primary:
+    build:
+      context: ./docker/postgres
+      args: { PG_VERSION: "${PG_VERSION:-16}" }
+    image: pg-support-stand/postgres:${PG_VERSION:-16}
+    environment:
+      <<: *pg-env
+      APP_RW_PASSWORD: ${APP_RW_PASSWORD:?}
+      APP_RO_PASSWORD: ${APP_RO_PASSWORD:?}
+      REPLICATOR_PASSWORD: ${REPLICATOR_PASSWORD:?}
+    volumes:
+      - pg_primary:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+      - ./backups:/backups
+    ports: ["5432:5432"]
+    dns: [172.28.0.2]
+    networks:
+      lab: { ipv4_address: 172.28.0.10 }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  pg-replica:
+    image: pg-support-stand/postgres:${PG_VERSION:-16}
+    entrypoint: ["/usr/local/bin/replica-entrypoint.sh"]
+    environment:
+      PRIMARY_HOST: pg-primary
+      REPLICATOR_PASSWORD: ${REPLICATOR_PASSWORD:?}
+    depends_on:
+      pg-primary: { condition: service_healthy }
+    volumes:
+      - pg_replica:/var/lib/postgresql/data
+    ports: ["5433:5432"]
+    dns: [172.28.0.2]
+    networks:
+      lab: { ipv4_address: 172.28.0.11 }
+    restart: unless-stopped
+
+  ad:
+    profiles: ["ad"]
+    build: ./docker/ad
+    image: pg-support-stand/samba-ad:latest
+    hostname: dc1
+    domainname: lab.local
+    environment:
+      AD_ADMIN_PASSWORD: ${AD_ADMIN_PASSWORD:?}
+      AD_REALM: LAB.LOCAL
+      AD_DOMAIN: LAB
+    volumes:
+      - ad_data:/var/lib/samba
+    cap_add: [SYS_ADMIN]
+    dns: [172.28.0.2]
+    networks:
+      lab: { ipv4_address: 172.28.0.20 }
+
+  toolbox:
+    profiles: ["tools"]
+    build: { context: ., dockerfile: docker/toolbox/Dockerfile }
+    image: pg-support-stand/toolbox:latest
+    environment:
+      PGHOST: pg-primary
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-shop}
+      REPLICA_HOST: pg-replica
+    dns: [172.28.0.2]
+    networks: [lab]
+    volumes:
+      - ./backups:/backups

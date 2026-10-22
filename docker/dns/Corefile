@@ -1,0 +1,12 @@
+# Зона лаборатории + пересылка остального наружу
+lab.local:53 {
+    file /zones/db.lab.local
+    log
+    errors
+}
+
+.:53 {
+    forward . 1.1.1.1 8.8.8.8
+    cache 30
+    errors
+}

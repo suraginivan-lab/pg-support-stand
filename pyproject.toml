@@ -1,0 +1,17 @@
+[project]
+name = "pg-support-stand"
+version = "1.0.0"
+description = "Стенд сопровождения PostgreSQL"
+requires-python = ">=3.10"
+dependencies = ["psycopg[binary]>=3.1"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.pytest.ini_options]
+pythonpath = ["python"]
+testpaths = ["python/tests"]
+
+[tool.ruff]
+line-length = 130
+src = ["python"]

@@ -1,0 +1,18 @@
+$ORIGIN lab.local.
+$TTL 60
+@        IN SOA ns1.lab.local. admin.lab.local. ( 2026102201 3600 600 86400 60 )
+@        IN NS  ns1.lab.local.
+
+ns1          IN A     172.28.0.2
+pg-primary   IN A     172.28.0.10
+pg-replica   IN A     172.28.0.11
+dc1          IN A     172.28.0.20
+
+; «плавающие» имена для приложений: при переключении меняем только CNAME
+pg-rw        IN CNAME pg-primary.lab.local.
+pg-ro        IN CNAME pg-replica.lab.local.
+
+; сервисные записи AD / PostgreSQL
+_ldap._tcp        IN SRV 0 100 389  dc1.lab.local.
+_kerberos._tcp    IN SRV 0 100 88   dc1.lab.local.
+_postgresql._tcp  IN SRV 0 100 5432 pg-primary.lab.local.
